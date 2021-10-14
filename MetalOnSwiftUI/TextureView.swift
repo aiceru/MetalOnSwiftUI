@@ -23,9 +23,12 @@ struct TextureView: UIViewRepresentable {
         view.enableSetNeedsDisplay = true
         view.framebufferOnly = true
         
-        let panRecognizer = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan))
-        let rotateRecognizer = UIRotationGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleRotate))
-        let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch))
+        let panRecognizer = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(gesture:)))
+        panRecognizer.delegate = context.coordinator
+        let rotateRecognizer = UIRotationGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleRotate(gesture:)))
+        rotateRecognizer.delegate = context.coordinator
+        let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(gesture:)))
+        pinchRecognizer.delegate = context.coordinator
         view.addGestureRecognizer(panRecognizer)
         view.addGestureRecognizer(rotateRecognizer)
         view.addGestureRecognizer(pinchRecognizer)
@@ -40,7 +43,7 @@ struct TextureView: UIViewRepresentable {
         Coordinator(view: view)
     }
     
-    class Coordinator {
+    class Coordinator : NSObject, UIGestureRecognizerDelegate {
         var renderer: TextureRenderer!
         var view: MTKView
         var gestureTarget:Int = -1
@@ -48,6 +51,10 @@ struct TextureView: UIViewRepresentable {
         init(view: MTKView) {
             self.view = view
             renderer = TextureRenderer(device: view.device!)
+        }
+        
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
         }
         
         func gestureLocation(gesture: UIGestureRecognizer) -> SIMD2<Float> {
@@ -111,20 +118,20 @@ class TextureRenderer: NSObject, MTKViewDelegate {
     var renderPipelineState: MTLRenderPipelineState!
     
     var centerBuffer: MTLBuffer!
-    var imageHalfSizeBuffer: MTLBuffer!
+    var sizeBuffer: MTLBuffer!
     var rotationBuffer: MTLBuffer!
     
     var textures: [MTLTexture] = []
-    var scales: [Float] = [1.0, 1.0]
     
     var centers : [vector_float2] = [
         vector_float2(-100.0, -100.0),
          vector_float2(0.0, 0.0),
     ]
-    var imageHalfSize: [vector_float2] = [
+    var sizes: [vector_float2] = [
         vector_float2(0.0, 0.0),
         vector_float2(0.0, 0.0),
     ]
+    var scales: [Float] = [1.0, 1.0]
     var rotations : [Float] = [     // in radian
         0.0,
         0.0,
@@ -146,8 +153,8 @@ class TextureRenderer: NSObject, MTKViewDelegate {
         beganPoint.y = location.y * Float(viewportSize.y) - Float(viewportSize.y) / 2.0
         
         for (i, center) in centers.enumerated() {
-            if beganPoint.x >= center.x - imageHalfSize[i].x && beganPoint.x <= center.x + imageHalfSize[i].x &&
-                beganPoint.y >= center.y - imageHalfSize[i].y && beganPoint.y <= center.y + imageHalfSize[i].y {
+            if beganPoint.x >= center.x - sizes[i].x && beganPoint.x <= center.x + sizes[i].x &&
+                beganPoint.y >= center.y - sizes[i].y && beganPoint.y <= center.y + sizes[i].y {
                 return i
             }
         }
@@ -158,12 +165,12 @@ class TextureRenderer: NSObject, MTKViewDelegate {
         var next = vector_float2()
         next.x = centers[target].x + (translation.x * Float(viewportSize.x))
         next.y = centers[target].y + (translation.y * Float(viewportSize.y))
-        if next.x > Float(viewportSize.x)/2.0 - imageHalfSize[target].x ||
-            next.x < imageHalfSize[target].x - Float(viewportSize.x)/2.0 {
+        if next.x > Float(viewportSize.x)/2.0 - sizes[target].x ||
+            next.x < sizes[target].x - Float(viewportSize.x)/2.0 {
             next.x = centers[target].x
         }
-        if next.y > Float(viewportSize.y)/2.0 - imageHalfSize[target].y ||
-            next.y < imageHalfSize[target].y - Float(viewportSize.y)/2.0 {
+        if next.y > Float(viewportSize.y)/2.0 - sizes[target].y ||
+            next.y < sizes[target].y - Float(viewportSize.y)/2.0 {
             next.y = centers[target].y
         }
         centers[target] = next
@@ -204,7 +211,7 @@ class TextureRenderer: NSObject, MTKViewDelegate {
     
     func createBuffers(device: MTLDevice) {
         centerBuffer = device.makeBuffer(bytes: centers, length: centers.count * MemoryLayout.size(ofValue: centers[0]), options: [])
-        imageHalfSizeBuffer = device.makeBuffer(bytes: imageHalfSize, length: imageHalfSize.count * MemoryLayout.size(ofValue: imageHalfSize[0]), options: [])
+        sizeBuffer = device.makeBuffer(bytes: sizes, length: sizes.count * MemoryLayout.size(ofValue: sizes[0]), options: [])
         rotationBuffer = device.makeBuffer(bytes: rotations, length: rotations.count * MemoryLayout.size(ofValue: rotations[0]), options: [])
     }
     
@@ -216,8 +223,8 @@ class TextureRenderer: NSObject, MTKViewDelegate {
     func draw(in view: MTKView) {
         let screenSize = UIScreen.main.bounds
         for i in CountableRange(0...1) {
-            imageHalfSize[i].x = Float(textures[i].width) / 2.0 * Float(screenSize.width) / Float(viewportSize.x) * scales[i]
-            imageHalfSize[i].y = Float(textures[i].height) / 2.0 * Float(screenSize.height) / Float(viewportSize.y) * scales[i]
+            sizes[i].x = Float(textures[i].width) / 2.0 * Float(screenSize.width) / Float(viewportSize.x) * scales[i]
+            sizes[i].y = Float(textures[i].height) / 2.0 * Float(screenSize.height) / Float(viewportSize.y) * scales[i]
         }
         
         guard let drawable = view.currentDrawable else { return }
@@ -233,7 +240,7 @@ class TextureRenderer: NSObject, MTKViewDelegate {
         createBuffers(device: view.device!)
         
         renderEncoder.setFragmentBuffer(centerBuffer, offset: 0, index: 0)
-        renderEncoder.setFragmentBuffer(imageHalfSizeBuffer, offset: 0, index: 1)
+        renderEncoder.setFragmentBuffer(sizeBuffer, offset: 0, index: 1)
         renderEncoder.setFragmentBuffer(rotationBuffer, offset: 0, index: 2)
         renderEncoder.setFragmentBytes(&viewportSize, length: MemoryLayout.size(ofValue: viewportSize), index: 3)
         renderEncoder.setFragmentTextures(textures, range: CountableRange(0...1))
