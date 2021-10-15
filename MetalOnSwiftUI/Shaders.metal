@@ -51,36 +51,22 @@ fragment float4 basic_fragment(ColoredVertex vert [[ stage_in ]]) {
 
 struct RasterizerData {
     float4 position [[ position ]];
-    //float2 textureCoordinate;
 };
 
 vertex RasterizerData textureVertexShader(unsigned int vid [[ vertex_id ]]) {
-//    float2 pixelSpacePosition = vertexArray[vid].position;
-//    float2 viewportSize = float2(*viewportSizePointer);
-//
-//    out.position = vector_float4(0.0, 0.0, 0.0, 1.0);
-//    out.position.xy = pixelSpacePosition.xy / viewportSize;
-//
-//    out.textureIndex = uint(vertexArray[vid].textureIndex);
-//
-    //    out.textureCoordinate = vertexArray[vid].textureCoordinate;
     RasterizerData out;
     switch (vid) {
         case 0:
             out.position = float4(-1.0, -1.0, 0.0, 1.0);
-//            out.textureCoordinate = float2(0.0, 1.0);
             break;
         case 1:
             out.position = float4(-1.0, 1.0, 0.0, 1.0);
-//            out.textureCoordinate = float2(0.0, 0.0);
             break;
         case 2:
             out.position = float4(1.0, -1.0, 0.0, 1.0);
-//            out.textureCoordinate = float2(1.0, 1.0);
             break;
         case 3:
             out.position = float4(1.0, 1.0, 0.0, 1.0);
-//            out.textureCoordinate = float2(1.0, 0.0);
             break;
     }
     return out;
@@ -108,13 +94,12 @@ fragment float4 textureFragmentShader(RasterizerData in [[ stage_in ]],
         if(center[i].y < d[i].y) center[i].y = d[i].y;
         if(center[i].y > viewportSize.y - d[i].y) center[i].y = viewportSize.y - d[i].y;
         
-        //float rad = 2.0 * M_PI_H * -r[i] / 360.0;
+        // calculate reverse rotated position of current pixel
         float rad = -r[i];
         float2x2 reverseRotation = float2x2(cos(rad), sin(rad), -sin(rad), cos(rad));
-        float2 rotatedPos;
+        float2 rotatedPos = reverseRotation * (pixelPos - center[i]);
         
-        rotatedPos = reverseRotation * (pixelPos - center[i]);
-        // define image the pixel belongs in or not
+        // define whether the reverse rotated position is in image rect area
         if (rotatedPos.x >= 0.0 - d[i].x && rotatedPos.x <= d[i].x && rotatedPos.y >= 0.0 - d[i].y && rotatedPos.y <= d[i].y) {
             samplingPos = ( rotatedPos + d[i] ) / d[i] / 2.0;
             break;

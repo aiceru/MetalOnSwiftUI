@@ -91,8 +91,7 @@ struct TextureView: UIViewRepresentable {
                 gestureTarget = renderer.findTargetImage(location: location)
             }
             if gestureTarget > -1 {
-                let r = gesture.rotation
-                renderer.rotateRect(target: gestureTarget, radian: r)
+                renderer.rotateRect(target: gestureTarget, radian: gesture.rotation)
                 view.setNeedsDisplay()
             }
         }
@@ -103,9 +102,7 @@ struct TextureView: UIViewRepresentable {
                 gestureTarget = renderer.findTargetImage(location: location)
             }
             if gestureTarget > -1 {
-                let scale = gesture.scale
-                
-                renderer.resizeRect(target: gestureTarget, scale: scale)
+                renderer.resizeRect(target: gestureTarget, scale: gesture.scale)
                 gesture.scale = 1.0
                 view.setNeedsDisplay()
             }
